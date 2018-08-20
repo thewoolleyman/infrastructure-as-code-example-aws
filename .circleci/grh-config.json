@@ -1,0 +1,21 @@
+{
+  "branchToRevise": "master",
+  "incrementCommits": [
+    {
+      "message": "add the CodeDeploy pipeline",
+      "tags": ["05-01-add-codedeploy-pipeline"]
+    },
+    {
+      "message": "add the CodeBuild build project",
+      "tags": ["04-02-add-codebuild-build-project"]
+    },
+    {
+      "message": "template with a CodeCommit repo",
+      "tags": ["03-01-bootstrapping-codecommit-repo"]
+    },
+    {
+      "message": "Initial commit",
+      "tags": ["docs-and-presentation"]
+    }
+  ]
+}
