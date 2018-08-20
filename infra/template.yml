@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Infrastructure as Code Example - a full stack, automatically and
+  continuously deployed web app
+Parameters:
+  ProjectId:
+    Type: String
+    Description: Project ID.
+    Default : iaceaws
+    AllowedPattern: '^[a-z]([a-z0-9-])+$'
+    ConstraintDescription: >-
+      Project IDs must be between 2 and 15 characters, begin with a letter, and
+      only contain lowercase letters, numbers, and hyphens (-).
+    MinLength: 2
+    MaxLength: 15
+  RepositoryName:
+    Type: String
+    Description: AWS CodeCommit repository name.
+    Default : iaceaws
+    MinLength: 1
+    MaxLength: 100
+Resources:
+  CloudFormationTrustRole:
+    Type: 'AWS::IAM::Role'
+    Description: Creating service role in IAM for AWS CloudFormation
+    Properties:
+      Path: /
+      RoleName: !Sub 'Worker-${ProjectId}-CloudFormation'
+      Policies:
+      - PolicyName: WorkerCloudFormationRolePolicy
+        PolicyDocument:
+          # NOTE: THESE ARE VERY PERMISSIVE SECURITY POLICIES FOR IAM, CODECOMMIT, CODEBUILD, ETC,
+          # TO ENSURE THAT CLOUDFORMATION IS ABLE TO PERFORM ANY NEW ACTIONS THAT ARE ADDED WITHOUT
+          # FAILING DUE TO INADEQUATE PERMISSIONS.  IN A REAL PRODUCTION ENVIRONMENT, YOU MAY
+          # WANT MORE EXPLICIT/RESTRICTIVE POLICIES. FOR MORE DETAILS, SEE:
+          # https://github.com/thewoolleyman/infrastructure-as-code-example-aws/issues/2
+          Statement:
+          - Action:
+            - 'codecommit:*'
+            Resource: '*'
+            Effect: Allow
+          - Action:
+            - 'iam:*'
+            Resource: '*'
+            Effect: Allow
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: 'sts:AssumeRole'
+          Effect: Allow
+          Principal:
+            Service:
+            - cloudformation.amazonaws.com
+  CodeCommitRepo:
+    DependsOn:
+    - CloudFormationTrustRole
+    Type: 'AWS::CodeCommit::Repository'
+    Description: Creating AWS CodeCommit repository for application source code
+    Properties:
+      RepositoryName: !Ref RepositoryName
