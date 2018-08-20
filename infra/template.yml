@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Infrastructure as Code Example - a full stack, automatically and
+  continuously deployed web app
+Parameters:
+  RepositoryName:
+    Type: String
+    Description: AWS CodeCommit repository name.
+    Default : iaceaws
+    MinLength: 1
+    MaxLength: 100
+Resources:
+  CodeCommitRepo:
+    Type: 'AWS::CodeCommit::Repository'
+    Description: Creating AWS CodeCommit repository for application source code
+    Properties:
+      RepositoryName: !Ref RepositoryName
