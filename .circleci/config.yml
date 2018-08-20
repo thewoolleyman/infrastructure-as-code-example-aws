@@ -1,0 +1,43 @@
+# Java Gradle CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-java/ for more details
+#
+version: 2
+jobs:
+  build:
+    docker:
+    # specify the version you desire here
+    - image: circleci/openjdk:8-jdk
+
+    working_directory: ~/repo
+
+    environment:
+      # Customize the JVM maximum heap limit
+      GIT_REVISIONIST_HISTORIAN_JAR_URL: https://s3.amazonaws.com/git-revisionist-historian/com/thewoolleyweb/grh/git-revisionist-historian/1.4.1/git-revisionist-historian-1.4.1.jar
+      JVM_OPTS: -Xmx3200m
+      REPO: thewoolleyman/infrastructure-as-code-example-aws
+      TERM: dumb
+
+    steps:
+    - checkout
+
+    # Download and cache dependencies
+    # TODO: set up cache and conditional download if doesn't exist for jar
+#    - restore_cache:
+#        keys:
+#        - v1-dependencies-{{ checksum "git-revisionist-historian.jar" }}
+#        # fallback to using the latest cache if no exact match is found
+#        - v1-dependencies-
+
+    - run: curl -o git-revisionist-historian.jar ${GIT_REVISIONIST_HISTORIAN_JAR_URL}
+
+#    - save_cache:
+#        paths:
+#        - ~/.gradle
+#        key: v1-dependencies-{{ checksum "git-revisionist-historian.jar" }}
+
+    # run GRH
+    - run: java -jar git-revisionist-historian.jar --repo ${REPO} --processor api --config .circleci/grh-config.json
+
+
+
