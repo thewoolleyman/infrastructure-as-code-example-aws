@@ -78,6 +78,7 @@ Resources:
           Effect: Allow
         - Action:
           - 'codecommit:GitPull'
+          - 'codecommit:ListRepositories'
           Resource:
           - !Sub 'arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${RepositoryName}'
           Effect: Allow
