@@ -48,6 +48,22 @@ Resources:
             - 's3:DeleteBucket'
             Resource: '*'
             Effect: Allow
+          #  TODO: PUT NOTE THAT THIS SHOULD BE RESTRICTED TO SPECIFIC RESOURCES, BUT IF YOU DON'T
+          # YOU CAN GET INTO A STATE WHERE YOU HAVE TO MANUALLY ASSIGN IT IN ORDER FOR STACK
+          # UPDATE TO COMPLETE
+          - Action:
+            - 'iam:*'
+            Resource: '*'
+            Effect: Allow
+          - Action:
+            - 'codecommit:GetRepository'
+            - 'codecommit:ListRepositories'
+            Resource: '*'
+            Effect: Allow
+          - Action:
+            - 'codebuild:BatchGetProjects'
+            Resource: '*'
+            Effect: Allow
       AssumeRolePolicyDocument:
         Statement:
         - Action: 'sts:AssumeRole'
@@ -174,6 +190,10 @@ Resources:
             - 'iam:PassRole'
             Resource:
             - !GetAtt CloudFormationTrustRole.Arn
+            Effect: Allow
+          - Action:
+            - 'iam:GetRole'
+            Resource: '*'
             Effect: Allow
       AssumeRolePolicyDocument:
         Statement:
@@ -352,6 +372,10 @@ Resources:
             - 'codepipeline:StartPipelineExecution'
             Resource:
             - !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${ProjectId}-Pipeline'
+            Effect: Allow
+          - Action:
+            - 'iam:GetRole'
+            Resource: '*'
             Effect: Allow
       AssumeRolePolicyDocument:
         Statement:
