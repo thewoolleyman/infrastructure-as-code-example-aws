@@ -18,6 +18,12 @@ Parameters:
     Default : iaceaws
     MinLength: 1
     MaxLength: 100
+  StackName:
+    Type: String
+    Description: AWS CloudFormation stack name.
+    Default : iaceaws
+    MinLength: 1
+    MaxLength: 100
 Resources:
   CloudFormationTrustRole:
     Type: 'AWS::IAM::Role'
@@ -110,15 +116,11 @@ Resources:
     DependsOn:
     - CloudFormationTrustRole
     - CodeBuildPolicy
-    # TODO: the CodeCommitRepo dependency can be removed once we switch to CODEPIPELINE as the Source Type
-    - CodeCommitRepo
     Type: 'AWS::CodeBuild::Project'
     Properties:
       Artifacts:
-        Type: S3
-        Location: !GetAtt S3Bucket.Arn
-        Name: artifacts.zip
-        Packaging: ZIP
+        Type: codepipeline
+        Packaging: zip
       Description: CodeBuild Project
       ServiceRole: !Ref CodeBuildRole
       Environment:
@@ -129,8 +131,7 @@ Resources:
         - Value: !Ref S3Bucket
           Name: S3_BUCKET
       Source:
-        Type: CODECOMMIT
-        Location: !GetAtt CodeCommitRepo.CloneUrlHttp
+        Type: codepipeline
         BuildSpec: 'infra/codebuild/buildspec.yml'
       Name: !Ref ProjectId
   CodeCommitRepo:
@@ -140,6 +141,148 @@ Resources:
     Description: Creating AWS CodeCommit repository for application source code
     Properties:
       RepositoryName: !Ref RepositoryName
+  CodePipelineTrustRole:
+    DependsOn:
+    - CloudFormationTrustRole
+    Type: 'AWS::IAM::Role'
+    Description: Creating service role in IAM for AWS CodePipeline
+    Properties:
+      Path: /
+      RoleName: !Sub 'Worker-${ProjectId}-CodePipeline'
+      Policies:
+      - PolicyName: WorkerCodePipelineRolePolicy
+        PolicyDocument:
+          Statement:
+          - Action:
+            - 's3:GetObject'
+            - 's3:GetObjectVersion'
+            - 's3:GetBucketVersioning'
+            - 's3:PutObject'
+            Resource:
+            - !Sub 'arn:aws:s3:::${S3Bucket}'
+            - !Sub 'arn:aws:s3:::${S3Bucket}/*'
+            Effect: Allow
+          - Action:
+            - 'codecommit:CancelUploadArchive'
+            - 'codecommit:GetBranch'
+            - 'codecommit:GetCommit'
+            - 'codecommit:GetUploadArchiveStatus'
+            - 'codecommit:UploadArchive'
+            Resource:
+            - !Sub 'arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${RepositoryName}'
+            Effect: Allow
+          - Action:
+            - 'codebuild:StartBuild'
+            - 'codebuild:BatchGetBuilds'
+            - 'codebuild:StopBuild'
+            Resource:
+            - !GetAtt CodeBuildProject.Arn
+            Effect: Allow
+          - Action:
+            - 'cloudformation:DescribeStacks'
+            - 'cloudformation:DescribeChangeSet'
+            - 'cloudformation:CreateChangeSet'
+            - 'cloudformation:DeleteChangeSet'
+            - 'cloudformation:ExecuteChangeSet'
+            Resource:
+            - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${StackName}/*'
+            Effect: Allow
+          - Action:
+            - 'iam:PassRole'
+            Resource:
+            - !GetAtt CloudFormationTrustRole.Arn
+            Effect: Allow
+          - Action:
+            - 'iam:GetRole'
+            Resource: '*'
+            Effect: Allow
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: 'sts:AssumeRole'
+          Effect: Allow
+          Principal:
+            Service:
+            - codepipeline.amazonaws.com
+          Sid: 1
+  ProjectPipeline:
+    DependsOn:
+    - CodePipelineTrustRole
+    - S3Bucket
+    - CodeBuildProject
+    - CloudFormationTrustRole
+    Type: 'AWS::CodePipeline::Pipeline'
+    Description: Creating a deployment pipeline for your project in AWS CodePipeline
+    Properties:
+      ArtifactStore:
+        Type: S3
+        Location: !Ref S3Bucket
+      Stages:
+      - Actions:
+        - ActionTypeId:
+            Owner: AWS
+            Category: Source
+            Version: 1
+            Provider: CodeCommit
+          Configuration:
+            PollForSourceChanges: false
+            RepositoryName: !Ref RepositoryName
+            BranchName: master
+          InputArtifacts: []
+          OutputArtifacts:
+          - Name: !Sub '${ProjectId}-SourceArtifact'
+          RunOrder: 1
+          Name: ApplicationSource
+        Name: Source
+      - Actions:
+        - ActionTypeId:
+            Owner: AWS
+            Category: Build
+            Version: 1
+            Provider: CodeBuild
+          Configuration:
+            ProjectName: !Ref ProjectId
+          InputArtifacts:
+          - Name: !Sub '${ProjectId}-SourceArtifact'
+          OutputArtifacts:
+          - Name: !Sub '${ProjectId}-BuildArtifact'
+          RunOrder: 1
+          Name: PackageExport
+        Name: Build
+      - Actions:
+        - ActionTypeId:
+            Owner: AWS
+            Category: Deploy
+            Version: 1
+            Provider: CloudFormation
+          Configuration:
+            TemplatePath: !Sub '${ProjectId}-BuildArtifact::template-export.yml'
+            ActionMode: CHANGE_SET_REPLACE
+            Capabilities: CAPABILITY_NAMED_IAM
+            ParameterOverrides: !Sub '{"ProjectId":"${ProjectId}"}'
+            ChangeSetName: pipeline-changeset
+            RoleArn: !GetAtt CloudFormationTrustRole.Arn
+            StackName: !Ref StackName
+          InputArtifacts:
+          - Name: !Sub '${ProjectId}-BuildArtifact'
+          OutputArtifacts: []
+          RunOrder: 1
+          Name: GenerateChangeSet
+        - ActionTypeId:
+            Owner: AWS
+            Category: Deploy
+            Version: 1
+            Provider: CloudFormation
+          Configuration:
+            ActionMode: CHANGE_SET_EXECUTE
+            ChangeSetName: pipeline-changeset
+            StackName: !Ref StackName
+          InputArtifacts: []
+          OutputArtifacts: []
+          RunOrder: 2
+          Name: ExecuteChangeSet
+        Name: Deploy
+      RoleArn: !GetAtt CodePipelineTrustRole.Arn
+      Name: !Sub '${ProjectId}-Pipeline'
   S3ArtifactBucketPolicy:
     DependsOn:
     - CloudFormationTrustRole
@@ -163,6 +306,7 @@ Resources:
           Effect: Allow
           Principal:
             AWS:
+            - !GetAtt CodePipelineTrustRole.Arn
             - !GetAtt CodeBuildRole.Arn
           Sid: WhitelistedGet
         - Action:
@@ -173,6 +317,7 @@ Resources:
           Effect: Allow
           Principal:
             AWS:
+            - !GetAtt CodePipelineTrustRole.Arn
             - !GetAtt CodeBuildRole.Arn
           Sid: WhitelistedPut
         Id: SSEAndSSLPolicy
@@ -189,3 +334,62 @@ Resources:
       Tags:
       - Value: !Sub '${ProjectId}-S3Bucket'
         Key: Name
+  SourceEvent:
+    DependsOn:
+    - CloudFormationTrustRole
+    Type: 'AWS::Events::Rule'
+    Properties:
+      EventPattern:
+        detail-type:
+        - CodeCommit Repository State Change
+        resources:
+        - !GetAtt CodeCommitRepo.Arn
+        detail:
+          referenceType:
+          - branch
+          event:
+          - referenceCreated
+          - referenceUpdated
+          referenceName:
+          - master
+        source:
+        - aws.codecommit
+      Description: >-
+        Rule for Amazon CloudWatch Events to detect changes to the source
+        repository and trigger pipeline execution
+      State: ENABLED
+      Targets:
+      - Id: ProjectPipelineTarget
+        Arn: !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${ProjectId}-Pipeline'
+        RoleArn: !GetAtt SourceEventRole.Arn
+      Name: !Sub '${ProjectId}-SourceEvent'
+  SourceEventRole:
+    DependsOn:
+    - CloudFormationTrustRole
+    Type: 'AWS::IAM::Role'
+    Description: >-
+      IAM role to allow Amazon CloudWatch Events to trigger AWS CodePipeline
+      execution
+    Properties:
+      RoleName: !Sub 'Worker-${ProjectId}-CloudWatchEventRule'
+      Policies:
+      - PolicyName: WorkerCloudWatchEventPolicy
+        PolicyDocument:
+          Statement:
+          - Action:
+            - 'codepipeline:StartPipelineExecution'
+            Resource:
+            - !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${ProjectId}-Pipeline'
+            Effect: Allow
+          - Action:
+            - 'iam:GetRole'
+            Resource: '*'
+            Effect: Allow
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: 'sts:AssumeRole'
+          Effect: Allow
+          Principal:
+            Service:
+            - events.amazonaws.com
+          Sid: 1
