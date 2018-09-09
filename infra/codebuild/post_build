@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -eu -o pipefail
+
+# Use AWS SAM to package the application using AWS CloudFormation
+aws cloudformation package --template ${CODEBUILD_SRC_DIR}/infra/template.yml \
+--s3-bucket ${S3_BUCKET} \
+--output-template ${CODEBUILD_SRC_DIR}/template-export.yml

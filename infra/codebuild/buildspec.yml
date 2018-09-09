@@ -1,0 +1,10 @@
+version: 0.2
+
+phases:
+  post_build:
+    commands:
+    - infra/codebuild/post_build
+artifacts:
+  type: zip
+  files:
+  - template-export.yml

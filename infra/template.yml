@@ -2,6 +2,16 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: Infrastructure as Code Example - a full stack, automatically and
   continuously deployed web app
 Parameters:
+  ProjectId:
+    Type: String
+    Description: Project ID.
+    Default : iaceaws
+    AllowedPattern: '^[a-z]([a-z0-9-])+$'
+    ConstraintDescription: >-
+      Project IDs must be between 2 and 15 characters, begin with a letter, and
+      only contain lowercase letters, numbers, and hyphens (-).
+    MinLength: 2
+    MaxLength: 15
   RepositoryName:
     Type: String
     Description: AWS CodeCommit repository name.
@@ -9,8 +19,119 @@ Parameters:
     MinLength: 1
     MaxLength: 100
 Resources:
+  CodeBuildPolicy:
+    Type: 'AWS::IAM::Policy'
+    Description: Setting IAM policy for service role for CodeBuild Amazon EC2 instances
+    Properties:
+      PolicyName: WorkerCodeBuildPolicy
+      PolicyDocument:
+        Statement:
+        - Action:
+          - 'logs:CreateLogGroup'
+          - 'logs:CreateLogStream'
+          - 'logs:PutLogEvents'
+          Resource: '*'
+          Effect: Allow
+        - Action:
+          - 's3:PutObject'
+          - 's3:GetObject'
+          - 's3:GetObjectVersion'
+          Resource:
+          - !Sub 'arn:aws:s3:::${S3Bucket}'
+          - !Sub 'arn:aws:s3:::${S3Bucket}/*'
+          Effect: Allow
+        - Action:
+          - 'codecommit:GitPull'
+          Resource:
+          - !Sub 'arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${RepositoryName}'
+          Effect: Allow
+      Roles:
+      - !Ref CodeBuildRole
+  CodeBuildRole:
+    Type: 'AWS::IAM::Role'
+    Description: Creating service role in IAM for CodeBuild Amazon EC2 instances
+    Properties:
+      Path: /
+      RoleName: !Sub 'Worker-${ProjectId}-CodeBuild'
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: 'sts:AssumeRole'
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+  CodeBuildProject:
+    DependsOn:
+    - CodeBuildPolicy
+    # TODO: the CodeCommitRepo dependency can be removed once we switch to CODEPIPELINE as the Source Type
+    - CodeCommitRepo
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Artifacts:
+        Type: S3
+        Location: !GetAtt S3Bucket.Arn
+        Name: artifacts.zip
+        Packaging: ZIP
+      Description: CodeBuild Project
+      ServiceRole: !Ref CodeBuildRole
+      Environment:
+        Type: container
+        Image: 'aws/codebuild/eb-nodejs-6.10.0-amazonlinux-64:4.0.0'
+        ComputeType: small
+        EnvironmentVariables:
+        - Value: !Ref S3Bucket
+          Name: S3_BUCKET
+      Source:
+        Type: CODECOMMIT
+        Location: !GetAtt CodeCommitRepo.CloneUrlHttp
+        BuildSpec: 'infra/codebuild/buildspec.yml'
+      Name: !Ref ProjectId
   CodeCommitRepo:
     Type: 'AWS::CodeCommit::Repository'
     Description: Creating AWS CodeCommit repository for application source code
     Properties:
       RepositoryName: !Ref RepositoryName
+  S3ArtifactBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Description: Setting Amazon S3 bucket policy for AWS CodePipeline access
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Condition:
+            Bool:
+              'aws:SecureTransport': false
+          Action:
+          - 's3:GetObject'
+          - 's3:GetObjectVersion'
+          - 's3:GetBucketVersioning'
+          Resource:
+          - !Sub 'arn:aws:s3:::${S3Bucket}'
+          - !Sub 'arn:aws:s3:::${S3Bucket}/*'
+          Effect: Allow
+          Principal:
+            AWS:
+            - !GetAtt CodeBuildRole.Arn
+          Sid: WhitelistedGet
+        - Action:
+          - 's3:PutObject'
+          Resource:
+          - !Sub 'arn:aws:s3:::${S3Bucket}'
+          - !Sub 'arn:aws:s3:::${S3Bucket}/*'
+          Effect: Allow
+          Principal:
+            AWS:
+            - !GetAtt CodeBuildRole.Arn
+          Sid: WhitelistedPut
+        Id: SSEAndSSLPolicy
+  S3Bucket:
+    DeletionPolicy: Delete
+    Type: 'AWS::S3::Bucket'
+    Description: Creating Amazon S3 bucket for artifacts
+    Properties:
+      BucketName: !Sub 'aws-${AWS::Region}-${AWS::AccountId}-${ProjectId}-artifacts'
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+      - Value: !Sub '${ProjectId}-S3Bucket'
+        Key: Name
