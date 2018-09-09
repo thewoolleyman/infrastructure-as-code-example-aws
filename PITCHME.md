@@ -90,7 +90,8 @@ via
 to keep tags up-to-date across rebases of master.  See
 [`.circleci/README_AUTOTAGGER.md`](https://github.com/thewoolleyman/infrastructure-as-code-example-aws/blob/master/.circleci/README_AUTOTAGGER.md)
 for details.
-* This means you need to be on top of your git-fu when forking and cloning this repo!  See the
+* This means you need to be on top of your git-fu when forking and cloning
+[this repo](https://github.com/thewoolleyman/infrastructure-as-code-example-aws)!  See the
 [README.md](https://github.com/thewoolleyman/infrastructure-as-code-example-aws/blob/master/README.md)
 for more details.
 
@@ -98,8 +99,9 @@ for more details.
 
 ### Let's Get Started!
 
-* ***YOU DO NOT NEED TO FORK OR CLONE THIS REPO TO DO THIS TUTORIAL!  In fact, you probably 
-shouldn't unless you know what you are doing. See the
+* ***YOU DO NOT NEED TO FORK OR CLONE
+[THIS REPO](https://github.com/thewoolleyman/infrastructure-as-code-example-aws)
+TO DO THIS TUTORIAL!  In fact, you probably shouldn't unless you know what you are doing. See the
 [README.md](https://github.com/thewoolleyman/infrastructure-as-code-example-aws/blob/master/README.md)
 for more details.***
 * The first few steps will involve "Manual Bootstrapping", which means you will be performing 
@@ -155,6 +157,11 @@ for details.
 * Paste in
 [this CloudFormation template](https://github.com/thewoolleyman/infrastructure-as-code-example-aws/blob/03-01-bootstrapping-codecommit-repo/infra/template.yml)
 and save the file.
+* Note that this template contains a "CloudFormationTrustRole" resource, with very broad 
+permissions to create and destroy AWS resources.  This is (as far as I can tell, I'm not an AWS 
+Security expert) necessary for subsequent steps, where CloudFormation itself will be responsible
+for this, as opposed to these early bootstrap steps, where you will be running Cloudformation 
+updates yourself, via the GUI, using your the root/admin user authorization level. 
 
 +++
 @title[Step 03-02 - Create and deploy the stack]
@@ -309,7 +316,7 @@ use the `Deploy` action for the `AWS CloudFormation` provider to automatically u
 ### Step 05-01 - Update the stack to add the CodeDeploy pipeline
 
 * When you're ready, paste in
-[the updated CloudFormation template](https://github.com/thewoolleyman/infrastructure-as-code-example-aws/blob/04-02-add-codedeploy-pipeline/infra/template.yml)
+[the updated CloudFormation template](https://github.com/thewoolleyman/infrastructure-as-code-example-aws/blob/05-01-add-codedeploy-pipeline/infra/template.yml)
 to your `infra/template.yml`
 * Add, commit, and push your changes, then upload the template and make sure your update completes 
 successfully. 
@@ -325,3 +332,4 @@ successfully.
   * Make a no-op change to the template.yml
   * commit and push it
   * See it automatically updated in the CloudFormation template editor.
+
